@@ -18,6 +18,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import itertools
 import json
 import os
 import re
@@ -49,15 +50,44 @@ class PL(object):
         self._running = False
 
     def _run(self):
-        table_actions = ('mod_l3_table', 'mod_group_table')
+        actions = ('add', 'del')
+        targets = ('user', 'server')
+        tasks = ['_'.join(e) for e in itertools.product(actions, targets)]
+        table_actions = ('mod_table', 'mod_l3_table', 'mod_group_table')  # In case other pipelines are added
         while self._running:
             for task in self.plconf.run_time:
                 if not self._running:
                     return
-                if task.action in table_actions:
+                if task.action == 'handover':
+                    teid = task.args.user_teid
+                    shift = task.args.bst_shift
+                    user = [u for u in self.plconf.users if u.teid == teid][0]
+                    new_bst = self._calc_new_bst_id(user.tun_end, shift)
+                    self.handover(user, new_bst)
+                elif task.action in table_actions:
                     self.mod_table(task.action, task.cmd,
                                    task.table, task.entry)
+                elif task.action in tasks:
+                    getattr(self, task.action)(task.args)
             time.sleep(self.runtime_interval)
+
+    def _calc_new_bst_id(self, cur_bst_id, bst_shift):
+        return (cur_bst_id + bst_shift) % len(self.plconf.bsts)
+
+    def add_user(self, user):
+        raise NotImplementedError
+
+    def del_user(self, user):
+        raise NotImplementedError
+
+    def add_server(self, server):
+        raise NotImplementedError
+
+    def del_server(self, server):
+        raise NotImplementedError
+
+    def handover(self, user, new_bst):
+        raise NotImplementedError
 
     def mod_table(self, action, cmd, table, entry):
         raise NotImplementedError
@@ -65,15 +95,74 @@ class PL(object):
 
 class PL_portfwd(PL):
     def init(self):
-        call_cmd(['polycubectl', 'simpleforwarder', 'add', 'sf0', 'type=XDP_DRV'])
-        call_cmd(['polycubectl', 'sf0', 'ports', 'add', 'uport', 'peer=' + self.uplink_p])
-        call_cmd(['polycubectl', 'sf0', 'ports', 'add', 'dport', 'peer=' + self.downlink_p])
-        call_cmd(['polycubectl', 'sf0', 'actions', 'add', 'uport', 'action=FORWARD', 'outport=dport'])
-        call_cmd(['polycubectl', 'sf0', 'actions', 'add', 'dport', 'action=FORWARD', 'outport=uport'])
+        call_cmd(['polycubectl', 'simpleforwarder', 'add', 'sf1', 'type=XDP_DRV'])
+        call_cmd(['polycubectl', 'sf1', 'ports', 'add', 'uport', 'peer=' + self.uplink_p])
+        call_cmd(['polycubectl', 'sf1', 'ports', 'add', 'dport', 'peer=' + self.downlink_p])
+        call_cmd(['polycubectl', 'sf1', 'actions', 'add', 'uport', 'action=FORWARD', 'outport=dport'])
+        call_cmd(['polycubectl', 'sf1', 'actions', 'add', 'dport', 'action=FORWARD', 'outport=uport'])
 
     def _run(self):
         while self._running:
             time.sleep(self.runtime_interval)
+
+
+class PL_mgw(PL):
+    def init(self):
+        call_cmd(['polycubectl', 'mobilegateway', 'add', 'mgw1', 'type=XDP_DRV'])
+
+        # Ports
+        call_cmd(['polycubectl', 'mgw1', 'ports', 'add', 'dport', 'peer=' + self.downlink_p,
+                  'direction=UE', 'ip=' + self.plconf.gw.ip + '/30'])
+        call_cmd(['polycubectl', 'mgw1', 'ports', 'add', 'uport', 'peer=' + self.uplink_p,
+                  'direction=PDN', 'ip=140.0.0.1/16'])
+
+        # Tipsy generates packets with the same dmac for both donwlink and uplink flows
+        call_cmd(['polycubectl', 'mgw1', 'ports', 'dport', 'set', 'mac=' + self.plconf.gw.mac])
+        call_cmd(['polycubectl', 'mgw1', 'ports', 'uport', 'set', 'mac=' + self.plconf.gw.mac])
+
+        # Add secondary ip on UE port on the same network of BSTs
+        call_cmd(['polycubectl', 'mgw1', 'ports', 'dport', 'secondaryip', 'add',
+                  '1.1.255.254/16'])
+
+        # Add base stations with static arp entries
+        for bst in self.plconf.bsts:
+            call_cmd(['polycubectl', 'mgw1', 'base-station', 'add', bst.ip])
+            call_cmd(['polycubectl', 'mgw1', 'arp-table', 'add', bst.ip, 'mac=' + bst.mac,
+                      'interface=dport'])
+
+        # UEs
+        for ue in self.plconf.users:
+            self.add_user(ue)
+
+        # Next hops: add static arp entries with custom ip addrs in net 140.0.0.0/16
+        # PROBLEM: can't set different smac for every next-hop
+        for i, nh in enumerate(self.plconf.nhops):
+            call_cmd(['polycubectl', 'mgw1', 'arp-table', 'add', fill_ip('140.0.%d.%d', i, 1), 
+                      'mac=' + nh.dmac, 'interface=uport'])
+
+        # Servers
+        for srv in self.plconf.srvs:
+            self.add_server(srv)
+
+    def add_user(self, user):
+        call_cmd(['polycubectl', 'mgw1', 'user-equipment', 'add', user.ip,
+                  'tunnel-endpoint=' + self.plconf.bsts[user.tun_end].ip,
+                  'teid=' + str(user.teid), 'rate-limit=' + str(user.rate_limit)])
+
+    def del_user(self, user):
+        call_cmd(['polycubectl', 'mgw1', 'user-equipment', 'del', user.ip])
+
+    def add_server(self, server):
+        call_cmd(['polycubectl', 'mgw1', 'route', 'add', server.ip + '/' + str(server.prefix_len),
+                  fill_ip('140.0.%d.%d', server.nhop, 1), 'interface=uport'])
+
+    def del_server(self, server):
+        call_cmd(['polycubectl', 'mgw1', 'route', 'del', server.ip + '/' + str(server.prefix_len),
+                  fill_ip('140.0.%d.%d', server.nhop, 1)])
+
+    def handover(self, user, new_bst):
+        call_cmd(['polycubectl', 'mgw1', 'user-equipment', user.ip, 'set',
+                  'tunnel-endpoint=' + self.plconf.bsts[new_bst].ip])
 
 
 # class PL_l3fwd(PL):
@@ -239,6 +328,11 @@ def signal_handler(signum, frame):
 def call_cmd(cmd):
     print(' '.join(cmd))
     return subprocess.run(cmd, check=True)
+
+
+def fill_ip(template, seq, offset_first=0):
+    i = seq + offset_first
+    return template % (int(i / 254), (i % 254) + 1)
 
 
 if __name__ == '__main__':

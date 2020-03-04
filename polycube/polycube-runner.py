@@ -53,7 +53,8 @@ class PL(object):
         actions = ('add', 'del')
         targets = ('user', 'server')
         tasks = ['_'.join(e) for e in itertools.product(actions, targets)]
-        table_actions = ('mod_table', 'mod_l3_table', 'mod_group_table')  # In case other pipelines are added
+        # In case other pipelines are added
+        table_actions = ('mod_table', 'mod_l3_table', 'mod_group_table')
         while self._running:
             for task in self.plconf.run_time:
                 if not self._running:
@@ -95,11 +96,16 @@ class PL(object):
 
 class PL_portfwd(PL):
     def init(self):
-        call_cmd(['polycubectl', 'simpleforwarder', 'add', 'sf1', 'type=XDP_DRV'])
-        call_cmd(['polycubectl', 'sf1', 'ports', 'add', 'uport', 'peer=' + self.uplink_p])
-        call_cmd(['polycubectl', 'sf1', 'ports', 'add', 'dport', 'peer=' + self.downlink_p])
-        call_cmd(['polycubectl', 'sf1', 'actions', 'add', 'uport', 'action=FORWARD', 'outport=dport'])
-        call_cmd(['polycubectl', 'sf1', 'actions', 'add', 'dport', 'action=FORWARD', 'outport=uport'])
+        call_cmd(['polycubectl', 'simpleforwarder', 'add', 'sf1',
+                  'type=XDP_DRV'])
+        call_cmd(['polycubectl', 'sf1', 'ports', 'add', 'uport',
+                  'peer=' + self.uplink_p])
+        call_cmd(['polycubectl', 'sf1', 'ports', 'add', 'dport',
+                  'peer=' + self.downlink_p])
+        call_cmd(['polycubectl', 'sf1', 'actions', 'add', 'uport',
+                  'action=FORWARD', 'outport=dport'])
+        call_cmd(['polycubectl', 'sf1', 'actions', 'add', 'dport',
+                  'action=FORWARD', 'outport=uport'])
 
     def _run(self):
         while self._running:
@@ -108,31 +114,41 @@ class PL_portfwd(PL):
 
 class PL_mgw(PL):
     def init(self):
-        call_cmd(['polycubectl', 'mobilegateway', 'add', 'mgw1', 'type=XDP_DRV'])
+        # Setup service chain
+        call_cmd(['polycubectl', 'router', 'add', 'r1', 'type=xdp_drv'])
+        call_cmd(['polycubectl', 'r1', 'ports', 'add', 'dport',
+                  'peer=' + self.downlink_p, 'ip=' + self.plconf.gw.ip + '/30'])
+        call_cmd(['polycubectl', 'r1', 'ports', 'add', 'uport',
+                  'peer=' + self.uplink_p, 'ip=140.0.0.1/16'])
 
-        # Ports
-        call_cmd(['polycubectl', 'mgw1', 'ports', 'add', 'dport', 'peer=' + self.downlink_p,
-                  'direction=UE', 'ip=' + self.plconf.gw.ip + '/30'])
-        call_cmd(['polycubectl', 'mgw1', 'ports', 'add', 'uport', 'peer=' + self.uplink_p,
-                  'direction=PDN', 'ip=140.0.0.1/16'])
+        call_cmd(['polycubectl', 'gtphandler', 'add', 'gh1', 'type=xdp_drv'])
+        call_cmd(['polycubectl', 'attach', 'gh1', 'r1:dport')]
 
-        # Tipsy generates packets with the same dmac for both donwlink and uplink flows
-        call_cmd(['polycubectl', 'mgw1', 'ports', 'dport', 'set', 'mac=' + self.plconf.gw.mac])
-        call_cmd(['polycubectl', 'mgw1', 'ports', 'uport', 'set', 'mac=' + self.plconf.gw.mac])
+        call_cmd(['polycubectl', 'policer', 'add', 'p1', 'type=xdp_drv'])
+        call_cmd(['polycubectl', 'attach', 'p1', 'r1:dport', 'position=first'])
+
+        call_cmd(['polycubectl', 'classifier', 'add', 'c1', 'type=xdp_drv'])
+        call_cmd(['polycubectl', 'attach', 'c1', 'r1:dport', 'position=first'])
+        
+        # Tipsy generates packets with the same dmac for both downlink
+        # and uplink flows
+        call_cmd(['polycubectl', 'r1', 'ports', 'dport', 'set',
+                  'mac=' + self.plconf.gw.mac])
+        call_cmd(['polycubectl', 'r1', 'ports', 'uport', 'set',
+                  'mac=' + self.plconf.gw.mac])
 
         # Add secondary ip on UE port on the same network of BSTs
-        call_cmd(['polycubectl', 'mgw1', 'ports', 'dport', 'secondaryip', 'add',
+        call_cmd(['polycubectl', 'r1', 'ports', 'dport', 'secondaryip', 'add',
                   '1.1.255.254/16'])
-
-        # Add base stations with static arp entries
-        for bst in self.plconf.bsts:
-            call_cmd(['polycubectl', 'mgw1', 'base-station', 'add', bst.ip])
-            call_cmd(['polycubectl', 'mgw1', 'arp-table', 'add', bst.ip, 'mac=' + bst.mac,
-                      'interface=dport'])
 
         # UEs
         for ue in self.plconf.users:
             self.add_user(ue)
+
+        # Add static arp entries for base stations
+        for bst in self.plconf.bsts:
+            call_cmd(['polycubectl', 'r1', 'arp-table', 'add', bst.ip,
+                      'mac=' + bst.mac, 'interface=dport'])
 
         # Next hops: add static arp entries with custom ip addrs in net 140.0.0.0/16
         # PROBLEM: can't set different smac for every next-hop
@@ -145,112 +161,42 @@ class PL_mgw(PL):
             self.add_server(srv)
 
     def add_user(self, user):
-        call_cmd(['polycubectl', 'mgw1', 'user-equipment', 'add', user.ip,
+        call_cmd(['polycubectl', 'r1', 'route', 'add', user.ip + '/32',
+                  self.plconf.bsts[user.tun_end].ip])
+        call_cmd(['polycubectl', 'c1', 'traffic-class', 'add', str(user.teid),
+                  'priority=0', 'dstip=' + user.ip + '/32'])
+        call_cmd(['polycubectl', 'p1', 'contract', 'add', str(user.teid),
+                  'action=limit', 'rate-limit=' + str(user.rate_limit),
+                  'burst-limit=' + str(user.rate_limit)])
+        call_cmd(['polycubectl', 'gh1', 'user-equipment', 'add',
+                  user.ip,
                   'tunnel-endpoint=' + self.plconf.bsts[user.tun_end].ip,
-                  'teid=' + str(user.teid), 'rate-limit=' + str(user.rate_limit)])
+                  'teid=' + str(user.teid)])
 
     def del_user(self, user):
-        call_cmd(['polycubectl', 'mgw1', 'user-equipment', 'del', user.ip])
+        call_cmd(['polycubectl', 'r1', 'route', 'del', user.ip + '/32',
+                  self.plconf.bsts[user.tun_end].ip])
+        call_cmd(['polycubectl', 'c1', 'traffic-class', 'del', str(user.teid)])
+        call_cmd(['polycubectl', 'p1', 'contract', 'del', str(user.teid)])
+        call_cmd(['polycubectl', 'gh1', 'user-equipment', 'del', user.ip])
 
     def add_server(self, server):
-        call_cmd(['polycubectl', 'mgw1', 'route', 'add', server.ip + '/' + str(server.prefix_len),
+        call_cmd(['polycubectl', 'r1', 'route', 'add',
+                  server.ip + '/' + str(server.prefix_len),
                   fill_ip('140.0.%d.%d', server.nhop, 1), 'interface=uport'])
 
     def del_server(self, server):
-        call_cmd(['polycubectl', 'mgw1', 'route', 'del', server.ip + '/' + str(server.prefix_len),
+        call_cmd(['polycubectl', 'r1', 'route', 'del',
+                  server.ip + '/' + str(server.prefix_len),
                   fill_ip('140.0.%d.%d', server.nhop, 1)])
 
     def handover(self, user, new_bst):
-        call_cmd(['polycubectl', 'mgw1', 'user-equipment', user.ip, 'set',
+        call_cmd(['polycubectl', 'r1', 'route', 'del', user.ip + '/32',
+                  self.plconf.bsts[user.tun_end].ip])
+        call_cmd(['polycubectl', 'r1', 'route', 'add', user.ip, 'set',
                   'tunnel-endpoint=' + self.plconf.bsts[new_bst].ip])
-
-
-# class PL_l3fwd(PL):
-#     def __init__(self, plconf, bmconf):
-#         super(PL_l3fwd, self).__init__(plconf, bmconf)
-#         self.extra_seq = 0
-#         self.extra_l2 = {}
-#         self.extra_ip = '49.49.%d.%d'
-
-#     def init(self):
-#         cmds = []
-#         for params in [(self.uplink_if, '192.168.2.2/24'),
-#                        (self.downlink_if, '192.168.1.1/24')]:
-#             cmds.append('set int ip address %s %s' % params)
-
-#         for entry in self.plconf.upstream_l3_table:
-#             ip = re.sub(r'\.[^.]+$', '.0', entry.ip)
-#             route_params = (ip, entry.prefix_len, self.uplink_if)
-#             cmds.append('ip route add %s/%d via %s' % route_params)
-#             arp_params = (self.uplink_if, entry.ip,
-#                           self.plconf.upstream_group_table[entry.nhop].dmac)
-#             cmds.append('set ip arp %s %s %s' % arp_params)
-
-#         for entry in self.plconf.downstream_l3_table:
-#             ip = re.sub(r'\.[^.]+$', '.0', entry.ip)
-#             route_params = (ip, entry.prefix_len, self.downlink_if)
-#             cmds.append('ip route add %s/%d via %s' % route_params)
-#             arp_params = (self.downlink_if, entry.ip,
-#                           self.plconf.downstream_group_table[entry.nhop].dmac)
-#             cmds.append('set ip arp %s %s %s' % arp_params)
-
-#         for interf in [self.uplink_if, self.downlink_if]:
-#             cmds.append('set int state %s up' % interf)
-
-#         inc = 10000
-#         for i in range(0, len(cmds), inc):
-#             tmp_file = NamedTemporaryFile(delete=True).name
-#             with open(tmp_file, 'w') as f:
-#                 for cmd in cmds[i:i+inc]:
-#                     f.write("%s\n" % cmd)
-#                 f.flush()
-#             vpp_cmd = ['sudo', 'vppctl', 'exec', tmp_file]
-#             call_cmd(vpp_cmd)
-
-#     def mod_table(self, action, cmd, table, entry):
-#         if not any(x in cmd for x in ['add', 'del']):
-#             raise ValueError
-#         if 'l3' in action:
-#             self.mod_l3_table(cmd, table, entry)
-#         elif 'group' in action:
-#             self.mod_group_table(cmd, table, entry)
-
-#     def mod_l3_table(self, cmd, table, entry):
-#         route_template = 'sudo vppctl ip route %s %s/%d via %s'
-#         arp_template = 'sudo vppctl set ip arp %s %s %s %s'
-#         interface = {'upstream': self.uplink_if,
-#                      'downstream': self.downlink_if}[table]
-#         ip = re.sub(r'\.[^.]+$', '.0', entry.ip)
-#         route_params = (cmd, ip, entry.prefix_len, interface)
-#         if cmd == 'add':
-#             cmd = ''
-#         mac = getattr(self.plconf,
-#                       '%s_group_table' % table)[entry.nhop].dmac
-#         arp_params = (cmd, interface, entry.ip, mac)
-#         for cmd in [(route_template % route_params),
-#                     (arp_template % arp_params)]:
-#             call_cmd(cmd.split())
-
-#     def mod_group_table(self, cmd, table, entry):
-#         interface = {'upstream': self.uplink_if,
-#                      'downstream': self.downlink_if}[table]
-#         arp_template = 'sudo vppctl set ip arp %s %s %s %s'
-#         try:
-#             self.extra_l2[entry.dmac]
-#         except:
-#             self.extra_l2[entry.dmac] = byte_seq(self.extra_ip,
-#                                                  self.extra_seq)
-#         if cmd == 'add':
-#             ip = self.extra_l2.setdefault(entry.dmac,
-#                                           byte_seq(self.extra_ip,
-#                                                    self.extra_seq))
-#             self.extra_seq += 1
-#             cmd = ''
-#         elif cmd == 'del':
-#             ip = self.extra_l2[entry.dmac]
-#         arp_params = (cmd, interface, ip, entry.dmac)
-#         call_cmd((arp_template % arp_params).split())
-
+        call_cmd(['polycubectl', 'gh1', 'user-equipment', user.ip, 'set',
+                  'tunnel-endpoint=' + self.plconf.bsts[new_bst].ip])
 
 class Polycube(object):
     def __init__(self, plconf, bmconf):

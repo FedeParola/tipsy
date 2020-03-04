@@ -117,12 +117,14 @@ class PL_mgw(PL):
         # Setup service chain
         call_cmd(['polycubectl', 'router', 'add', 'r1', 'type=xdp_drv'])
         call_cmd(['polycubectl', 'r1', 'ports', 'add', 'dport',
-                  'peer=' + self.downlink_p, 'ip=' + self.plconf.gw.ip + '/30'])
+                  'peer=' + self.downlink_p])
         call_cmd(['polycubectl', 'r1', 'ports', 'add', 'uport',
                   'peer=' + self.uplink_p, 'ip=140.0.0.1/16'])
+        call_cmd(['polycubectl', 'r1', 'ports', 'dport', 'set',
+                  'ip=' + self.plconf.gw.ip + '/30'])
 
         call_cmd(['polycubectl', 'gtphandler', 'add', 'gh1', 'type=xdp_drv'])
-        call_cmd(['polycubectl', 'attach', 'gh1', 'r1:dport')]
+        call_cmd(['polycubectl', 'attach', 'gh1', 'r1:dport'])
 
         call_cmd(['polycubectl', 'policer', 'add', 'p1', 'type=xdp_drv'])
         call_cmd(['polycubectl', 'attach', 'p1', 'r1:dport', 'position=first'])
@@ -153,7 +155,7 @@ class PL_mgw(PL):
         # Next hops: add static arp entries with custom ip addrs in net 140.0.0.0/16
         # PROBLEM: can't set different smac for every next-hop
         for i, nh in enumerate(self.plconf.nhops):
-            call_cmd(['polycubectl', 'mgw1', 'arp-table', 'add', fill_ip('140.0.%d.%d', i, 1), 
+            call_cmd(['polycubectl', 'r1', 'arp-table', 'add', fill_ip('140.0.%d.%d', i, 1), 
                       'mac=' + nh.dmac, 'interface=uport'])
 
         # Servers

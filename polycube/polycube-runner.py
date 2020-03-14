@@ -218,10 +218,20 @@ class Polycube(object):
         self.pipeline.stop()
         try:
             polycubed_pid = int(subprocess.check_output(['pidof', 'polycubed']))
+            polycubed_stop_cmd = ['sudo', 'kill', str(polycubed_pid)]
+            call_cmd(polycubed_stop_cmd)
+            polycubed_stopped = False
+            for _ in range(60):
+                time.sleep(1)
+                retval = subprocess.call(['pidof', 'polycubed'])
+                if retval:
+                    polycubed_stopped = True
+                    break
+            assert polycubed_stopped
         except subprocess.CalledProcessError:
-            sys.exit('ERROR: Pid of running polycubed instance is not found.')
-        polycubed_stop_cmd = ['sudo', 'kill', str(polycubed_pid)]
-        call_cmd(polycubed_stop_cmd)
+            sys.exit('ERROR: Pid of running polycubed instance is not found')
+        except:
+            sys.exit('ERROR: stopping polycubed failed')
 
     def start_polycubed(self):
         polycubed_start_cmd = ['sudo', 'polycubed', '-d', '-p', '8000']

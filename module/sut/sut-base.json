@@ -4,7 +4,7 @@
   "properties": {
     "type": {
       "type": "string",
-      "enum": ["bess", "ofdpa", "t4p4s", "vpp"]
+      "enum": ["bess", "ofdpa", "t4p4s", "vpp", "polycube"]
     },
     "hostname": {
       "type": "string",

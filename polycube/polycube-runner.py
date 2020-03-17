@@ -2,7 +2,7 @@
 
 # TIPSY: Telco pIPeline benchmarking SYstem
 #
-# Copyright (C) 2019 by ?
+# Copyright (C) 2020 by ?
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -97,7 +97,7 @@ class PL(object):
 class PL_portfwd(PL):
     def init(self):
         call_cmd(['polycubectl', 'simpleforwarder', 'add', 'sf1',
-                  'type=XDP_DRV'])
+                  'type=xdp_drv'])
         call_cmd(['polycubectl', 'sf1', 'ports', 'add', 'uport',
                   'peer=' + self.uplink_p])
         call_cmd(['polycubectl', 'sf1', 'ports', 'add', 'dport',
@@ -114,53 +114,165 @@ class PL_portfwd(PL):
 
 class PL_mgw(PL):
     def init(self):
-        # Setup service chain
-        call_cmd(['polycubectl', 'router', 'add', 'r1', 'type=xdp_drv'])
-        call_cmd(['polycubectl', 'r1', 'ports', 'add', 'dport',
-                  'peer=' + self.downlink_p])
-        call_cmd(['polycubectl', 'r1', 'ports', 'add', 'uport',
-                  'peer=' + self.uplink_p, 'ip=140.0.0.1/16'])
-        call_cmd(['polycubectl', 'r1', 'ports', 'dport', 'set',
-                  'ip=' + self.plconf.gw.ip + '/30'])
+        # Setup router
+        router = {}
+        router['type'] = 'xdp_drv'
+        router['ports'] = [
+            {
+                'name': 'dport',
+                'peer': self.downlink_p,
+                'mac': self.plconf.gw.mac,
+                'ip': self.plconf.gw.ip + '/30',
+                'secondaryip': [
+                    {'ip': '1.1.255.254/16'}
+                ]
+            },
+            {
+                'name': 'uport',
+                'peer': self.uplink_p,
+                'mac': self.plconf.gw.mac,
+                'ip': '140.0.0.1/16'
+            }
+        ]
 
-        call_cmd(['polycubectl', 'gtphandler', 'add', 'gh1', 'type=xdp_drv'])
-        call_cmd(['polycubectl', 'attach', 'gh1', 'r1:dport'])
+        # Setup gtphandler
+        gtphandler = {}
+        gtphandler['type'] = 'xdp_drv'
+        gtphandler['user-equipment'] = []
 
-        call_cmd(['polycubectl', 'policer', 'add', 'p1', 'type=xdp_drv'])
-        call_cmd(['polycubectl', 'attach', 'p1', 'r1:dport', 'position=first'])
+        # Setup policer
+        policer = {}
+        policer['type'] = 'xdp_drv'
+        policer['contract'] = []
 
-        call_cmd(['polycubectl', 'classifier', 'add', 'c1', 'type=xdp_drv'])
-        call_cmd(['polycubectl', 'attach', 'c1', 'r1:dport', 'position=first'])
-        
-        # Tipsy generates packets with the same dmac for both downlink
-        # and uplink flows
-        call_cmd(['polycubectl', 'r1', 'ports', 'dport', 'set',
-                  'mac=' + self.plconf.gw.mac])
-        call_cmd(['polycubectl', 'r1', 'ports', 'uport', 'set',
-                  'mac=' + self.plconf.gw.mac])
+        # Setup classifier
+        classifier = {}
+        classifier['type'] = 'xdp_drv'
+        classifier['traffic-class'] = []
 
-        # Add secondary ip on UE port on the same network of BSTs
-        call_cmd(['polycubectl', 'r1', 'ports', 'dport', 'secondaryip', 'add',
-                  '1.1.255.254/16'])
-
-        # UEs
-        for ue in self.plconf.users:
-            self.add_user(ue)
+        # Create cubes
+        r = requests.post('http://localhost:8000/polycube/v1/router/r1',
+                          json.dumps(router))
+        print(r.text)
+        r = requests.post('http://localhost:8000/polycube/v1/gtphandler/gh1',
+                          json.dumps(gtphandler))
+        print(r.text)
+        r = requests.post('http://localhost:8000/polycube/v1/policer/p1',
+                          json.dumps(policer))
+        print(r.text)
+        r = requests.post('http://localhost:8000/polycube/v1/classifier/c1',
+                          json.dumps(classifier))
+        print(r.text)
 
         # Add static arp entries for base stations
-        for bst in self.plconf.bsts:
-            call_cmd(['polycubectl', 'r1', 'arp-table', 'add', bst.ip,
-                      'mac=' + bst.mac, 'interface=dport'])
-
+        arp_table = "["
+        for i, bst in enumerate(self.plconf.bsts):
+            if i > 0:
+                arp_table += ','
+            arp_table += json.dumps({
+                'address': bst.ip,
+                'mac': bst.mac,
+                'interface': 'dport'
+            })
+        
         # Next hops: add static arp entries with custom ip addrs in net 140.0.0.0/16
         # PROBLEM: can't set different smac for every next-hop
         for i, nh in enumerate(self.plconf.nhops):
-            call_cmd(['polycubectl', 'r1', 'arp-table', 'add', fill_ip('140.0.%d.%d', i, 1), 
-                      'mac=' + nh.dmac, 'interface=uport'])
+            arp_table += ','
+            arp_table += json.dumps({
+                'address': fill_ip('140.0.%d.%d', i, 1),
+                'mac': nh.dmac,
+                'interface': 'uport'
+            })
 
-        # Servers
-        for srv in self.plconf.srvs:
-            self.add_server(srv)
+        arp_table += ']'
+        r = requests.post(
+                'http://localhost:8000/polycube/v1/router/r1/arp-table',
+                arp_table)
+        print(r.text)
+
+        # Setup UEs
+        self.add_users(self.plconf.users)
+
+        # Setup servers
+        self.add_servers(self.plconf.srvs)
+
+        # Connect cubes
+        call_cmd(['polycubectl', 'attach', 'gh1', 'r1:dport'])
+        call_cmd(['polycubectl', 'attach', 'p1', 'r1:dport', 'position=first'])
+        call_cmd(['polycubectl', 'attach', 'c1', 'r1:dport', 'position=first'])
+
+    def add_users(self, users):
+        routes = '['
+        classes = '['
+        contracts = '['
+        ues = '['
+
+        for i, u in enumerate(users):
+            if i > 0:
+                routes += ','
+                classes += ','
+                contracts += ','
+                ues += ','
+
+            routes += json.dumps({
+                'network': u.ip + '/32',
+                'nexthop': self.plconf.bsts[u.tun_end].ip
+            })
+            classes += json.dumps({
+                'id': u.teid,
+                'priority': 0,
+                'dstip': u.ip + '/32'
+            })
+            contracts += json.dumps({
+                'traffic-class': u.teid,
+                'action': 'limit',
+                'rate-limit': u.rate_limit,
+                'burst-limit': u.rate_limit
+            })
+            ues += json.dumps({
+                'ip': u.ip,
+                'tunnel-endpoint': self.plconf.bsts[u.tun_end].ip,
+                'teid': u.teid
+            })
+
+        routes += ']'
+        classes += ']'
+        contracts += ']'
+        ues += ']'
+
+        r = requests.post(
+                'http://localhost:8000/polycube/v1/router/r1/route',
+                routes)
+        print(r.text)
+        r = requests.post(
+                'http://localhost:8000/polycube/v1/classifier/c1/traffic-class',
+                classes)
+        print(r.text)
+        r = requests.post(
+                'http://localhost:8000/polycube/v1/policer/p1/contract',
+                contracts)
+        print(r.text)
+        r = requests.post(
+                'http://localhost:8000/polycube/v1/gtphandler/gh1/user-equipment',
+                ues)
+        print(r.text)
+
+    def add_servers(self, servers):
+        routes = '['
+        for i, srv in enumerate(servers):
+            if i > 0:
+                routes += ','
+            routes += json.dumps({
+                'network': srv.ip + '/' + str(srv.prefix_len),
+                'nexthop': fill_ip('140.0.%d.%d', srv.nhop, 1),
+            })
+        routes += ']'
+
+        r = requests.post(
+                'http://localhost:8000/polycube/v1/router/r1/route',
+                routes)
+        print(r.text)
 
     def add_user(self, user):
         call_cmd(['polycubectl', 'r1', 'route', 'add', user.ip + '/32',

@@ -341,7 +341,7 @@ class Polycube(object):
                     break
             assert polycubed_stopped
         except subprocess.CalledProcessError:
-            sys.exit('ERROR: Pid of running polycubed instance is not found')
+            sys.exit('ERROR: pid of running polycubed instance not found')
         except:
             sys.exit('ERROR: stopping polycubed failed')
 
@@ -359,9 +359,28 @@ class Polycube(object):
                     polycubectl_ready = True
                     break
             assert polycubectl_ready
+
         except:
             sys.exit('ERROR: starting polycubed failed: %s' %
                      ' '.join(polycubed_start_cmd))
+
+        # Set the number of cores
+        if self.plconf.core > 0:
+            try:
+                call_cmd(['sudo', 'killall', 'irqbalance'])
+                cores = '0-' + str(self.plconf.core - 1)
+                set_cores_cmd = ['sudo',
+                        self.bmconf['tipsy-dir'] +
+                        '/polycube/set_irq_affinity.sh'],
+                        cores,
+                        self.bmconf['downlink-port'],
+                        self.bmconf['uplink']
+                call_cmd(set_cores_cmd)
+            
+            except:
+                return subprocess.run("sudo killall polycubed")
+                sys.exit('ERROR: setting cores count failed: %s' %
+                         ' '.join(set_cores_cmd))
 
     def start_pipeline(self):
         pl = getattr(sys.modules[__name__],

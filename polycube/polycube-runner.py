@@ -222,6 +222,7 @@ class PL_mgw(PL):
             classes += json.dumps({
                 'id': u.teid,
                 'priority': 0,
+                'direction': 'egress',
                 'dstip': u.ip + '/32'
             })
             contracts += json.dumps({
@@ -278,7 +279,7 @@ class PL_mgw(PL):
         call_cmd(['polycubectl', 'r1', 'route', 'add', user.ip + '/32',
                   self.plconf.bsts[user.tun_end].ip])
         call_cmd(['polycubectl', 'c1', 'traffic-class', 'add', str(user.teid),
-                  'priority=0', 'dstip=' + user.ip + '/32'])
+                  'priority=0', 'direction=egress', 'dstip=' + user.ip + '/32'])
         call_cmd(['polycubectl', 'p1', 'contract', 'add', str(user.teid),
                   'action=limit', 'rate-limit=' + str(user.rate_limit),
                   'burst-limit=' + str(user.rate_limit)])

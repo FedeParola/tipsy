@@ -368,18 +368,19 @@ class Polycube(object):
         # Set the number of cores
         if self.plconf.core > 0:
             try:
-                call_cmd(['sudo', 'killall', 'irqbalance'])
+                subprocess.run(['sudo', 'killall', 'irqbalance'])
                 cores = '0-' + str(self.plconf.core - 1)
-                set_cores_cmd = ['sudo',
-                        self.bmconf['tipsy-dir'] +
-                        '/polycube/set_irq_affinity.sh'],
+                set_cores_cmd = [
+                        'sudo',
+                        self.bmconf.sut.tipsy_dir +
+                        '/polycube/set_irq_affinity.sh',
                         cores,
-                        self.bmconf['downlink-port'],
-                        self.bmconf['uplink']
+                        self.bmconf.sut.downlink_port,
+                        self.bmconf.sut.uplink_port]
                 call_cmd(set_cores_cmd)
             
             except:
-                return subprocess.run("sudo killall polycubed")
+                return subprocess.run(['sudo', 'killall', 'polycubed'])
                 sys.exit('ERROR: setting cores count failed: %s' %
                          ' '.join(set_cores_cmd))
 

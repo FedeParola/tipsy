@@ -164,6 +164,25 @@ class PL_mgw(PL):
                           json.dumps(classifier))
         print(r.text)
 
+        # Set the number of cores
+        if self.plconf.core > 0:
+            try:
+                subprocess.run(['sudo', 'killall', 'irqbalance'])
+                cores = '0-' + str(self.plconf.core - 1)
+                set_cores_cmd = [
+                        'sudo',
+                        self.bmconf.sut.tipsy_dir +
+                        '/polycube/set_irq_affinity.sh',
+                        cores,
+                        self.bmconf.sut.downlink_port,
+                        self.bmconf.sut.uplink_port]
+                call_cmd(set_cores_cmd)
+            
+            except:
+                return subprocess.run(['sudo', 'killall', 'polycubed'])
+                sys.exit('ERROR: setting cores count failed: %s' %
+                         ' '.join(set_cores_cmd))
+
         # Add static arp entries for base stations
         arp_table = "["
         for i, bst in enumerate(self.plconf.bsts):
@@ -364,25 +383,6 @@ class Polycube(object):
         except:
             sys.exit('ERROR: starting polycubed failed: %s' %
                      ' '.join(polycubed_start_cmd))
-
-        # Set the number of cores
-        if self.plconf.core > 0:
-            try:
-                subprocess.run(['sudo', 'killall', 'irqbalance'])
-                cores = '0-' + str(self.plconf.core - 1)
-                set_cores_cmd = [
-                        'sudo',
-                        self.bmconf.sut.tipsy_dir +
-                        '/polycube/set_irq_affinity.sh',
-                        cores,
-                        self.bmconf.sut.downlink_port,
-                        self.bmconf.sut.uplink_port]
-                call_cmd(set_cores_cmd)
-            
-            except:
-                return subprocess.run(['sudo', 'killall', 'polycubed'])
-                sys.exit('ERROR: setting cores count failed: %s' %
-                         ' '.join(set_cores_cmd))
 
     def start_pipeline(self):
         pl = getattr(sys.modules[__name__],

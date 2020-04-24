@@ -19,13 +19,12 @@
 
 local mod = {}
 
-local device  = require "device"
-
 function mod:setRate(dev, rate)
-   local devices = device.getDevices()
-   specname = 'Intel Corporation 82599ES'
-   if devices[dev.id].name:sub(1, #specname) == specname then
-      -- "82599 has per queue rate limit"
+   name_82599 = 'Intel Corporation 82599ES'
+   name_X540 = 'Intel Corporation Ethernet Controller 10-Gigabit X540-AT2'
+   if dev:getName():sub(1, #name_82599) == name_82599 or
+      dev:getName():sub(1, #name_X540) == name_X540 then
+      -- "82599 and X540 have per queue rate limit"
       -- https://blog.linuxplumbersconf.org/2012/wp-content/uploads/2012/09/2012-lpc-Hardware-Rate-Limiting-brandeburg.pdf
       for seq, que in pairs(dev.txQueues) do
          -- print('-->  ' .. seq)

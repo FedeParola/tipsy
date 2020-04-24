@@ -17,7 +17,7 @@
 
 from pathlib import Path
 
-from sut_base import SUT as Base
+from SUT_base import SUT as Base
 
 class SUT(Base):
     def _start(self):

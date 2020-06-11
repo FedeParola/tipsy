@@ -252,8 +252,7 @@ class PL_mgw(PL):
             })
             ues += json.dumps({
                 'ip': u.ip,
-                'tunnel-endpoint': self.plconf.bsts[u.tun_end].ip,
-                'teid': u.teid
+                'tunnel-endpoint': self.plconf.bsts[u.tun_end].ip
             })
 
         routes += ']'

@@ -107,7 +107,7 @@ def add_port_by_name(brName, portName, **kw):
   if kw:
     cmd += ['--', 'set', 'Interface', portName]
     for col, val in kw.items():
-      if type(val) == str:
+      if type(val) == str or type(val) == unicode:
         cmd.append('%s=%s' % (col, val))
       elif type(val) == dict:
         for key, value in val.items():

@@ -184,14 +184,14 @@ function master(args)
 
       mg.sleepMillis(1000)
    end
-   log:info('Result: %.2f%s', yellow(tostring(lastValid.rxMpps)),
-            white(' [Mbit/s]'))
+   log:info('Result: %.2f%s', yellow(string.format("%.2f", lastValid.rxMpps)),
+            white(' [Mpps]'))
    if args.ofile then
       file = io.open(args.ofile, "w")
       file:write("limit,tx,rx,unit\n")
       file:write(tostring(lastValid.rxMpps), ",",
-                 tostring(lastValid.txTotal), ",",
-                 tostring(lastValid.rxTotal), ",Mpps\n")
+                 tostring(lastValid.txPkts), ",",
+                 tostring(lastValid.rxPkts), ",Mpps\n")
       file:close()
    end
 end

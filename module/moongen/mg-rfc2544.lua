@@ -69,14 +69,14 @@ function configure(parser)
       :argname("rate")
       :default(0)
       :convert(tonumber)
-   parser:option("-l --lossTolerance", "loss considered acceptable [%]\n"
-                    .. "default: 0.1%.")
+   parser:option("-l --lossTolerance", "loss considered acceptable\n"
+                    .. "default: 0.001.")
       :argname("lt")
-      :default(0.2)
+      :default(0.001)
       :convert(tonumber)
    parser:option("-t --initialThroughput", "inital maximum throughput [Mbit/s]\n"
                     .. "default: link throughput")
-      :argname("it")
+      :argname("throughput")
       :default(0)
       :convert(tonumber)
    parser:option("-o --ofile", "file to write the result into."):default(nil)
@@ -153,9 +153,11 @@ function master(args)
    local lossTolerance = args.lossTolerance
    local binSearch = binarySearch(0, linkRate)
    local finished = false
+   local lost;
+   local lossRate;
    local validRun = false
    local r
-   a.rate = args.it == 0 and linkRate or args.it
+   a.rate = args.initialThroughput == 0 and linkRate or args.initialThroughput
    log:info("Precision: %d [Mbit/s]", rateThreshold)
 
    while not finished do
@@ -164,16 +166,16 @@ function master(args)
                white(' [Mbit/s] for %ds', a.runtime))
       r = measure_with_rate(a)
       --validRun = (r.tx < r.rx + rateThreshold) and (r.tx >= a.rate*0.9)
-      validRun = ((r.txTotal - r.rxTotal) / r.txTotal * 100 < lossTolerance)
+      lost = (r.txPkts - r.rxPkts)
+      lossRate = lost / r.txPkts
+      validRun = lossRate < lossTolerance
       if validRun then
          lastValid = r
       end
       log:info('  result: tx:%2.2f rx:%2.2f [Mpps]', r.txMpps, r.rxMpps)
-      log:info('  result: tx:%5.0f rx:%5.0f [Mbit/s] %s', r.tx, r.rx, validRun)
+      log:info('  result: tx:%d rx:%d lost:%d (%.2%%) [packets] %s', r.txPkts,
+               r.rxPkts, lost, lossRate*100, validRun)
       a.rate, finished = binSearch:next(a.rate, validRun, rateThreshold)
-      log:info('          %d < tx-rfc < %d (precision: %s)',
-               binSearch.lowerLimit, binSearch.upperLimit,
-               binSearch.upperLimit - binSearch.lowerLimit)
       if r.rxMpps < 0.001 then
          -- There's something work with SUT, no point in continuing
          a.rate = 0
@@ -182,14 +184,14 @@ function master(args)
 
       mg.sleepMillis(1000)
    end
-   rate = binSearch.lowerLimit
-   log:info('Result: %s%s', yellow(tostring(rate)), white(' [Mbit/s]'))
+   log:info('Result: %.2f%s', yellow(tostring(lastValid.rxMpps)),
+            white(' [Mbit/s]'))
    if args.ofile then
       file = io.open(args.ofile, "w")
       file:write("limit,tx,rx,unit\n")
       file:write(tostring(lastValid.rxMpps), ",",
-                tostring(lastValid.txTotal), ",",
-                tostring(lastValid.rxTotal), ",Mpps\n")
+                 tostring(lastValid.txTotal), ",",
+                 tostring(lastValid.rxTotal), ",Mpps\n")
       file:close()
    end
 end
@@ -200,11 +202,13 @@ function measure_with_rate(...)
    local txCtr = stats:newDevTxCounter(a.txDev, "nil")
    txCtr:update()
    rxCtr:update()
+
+   setRate:setRate(a.txDev, a.rate)
+
    for i = 1, a.cores do
       mg.startTask("replay_pcap", a.txDev:getTxQueue(i-1), a.file, true)
    end
-
-   setRate:setRate(a.txDev, a.rate)
+   
    mg.setRuntime(a.runtime)
 
    mg.waitForTasks()
@@ -215,9 +219,8 @@ function measure_with_rate(...)
    local tx_stats = txCtr:getStats()
    local rx_stats = rxCtr:getStats()
 
-   return {tx=txCtr.wireMbit[1], rx=rxCtr.wireMbit[1],
-           txMpps=txCtr.mpps[1], rxMpps=rxCtr.mpps[1],
-           txTotal=txCtr.total[1], rxTotal=rxCtr.total[1]}
+   return {txMpps=txCtr.mpps[1], rxMpps=rxCtr.mpps[1],
+           txPkts=txCtr.total[1], rxTotal=rxPkts.total[1]}
 end
 
 function replay_small_pcap(queue, bufs, n)

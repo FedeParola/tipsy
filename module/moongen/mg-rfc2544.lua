@@ -69,10 +69,15 @@ function configure(parser)
       :argname("rate")
       :default(0)
       :convert(tonumber)
-   parser:option("-l --lossTolerance", "loss considered acceptable [mpps]\n"
-                    .. "default: 0.2 mpps.")
+   parser:option("-l --lossTolerance", "loss considered acceptable [%]\n"
+                    .. "default: 0.1%.")
       :argname("lt")
       :default(0.2)
+      :convert(tonumber)
+   parser:option("-t --initialThroughput", "inital maximum throughput [Mbit/s]\n"
+                    .. "default: link throughput")
+      :argname("it")
+      :default(0)
       :convert(tonumber)
    parser:option("-o --ofile", "file to write the result into."):default(nil)
    local args = parser:parse()
@@ -150,7 +155,7 @@ function master(args)
    local finished = false
    local validRun = false
    local r
-   a.rate = linkRate
+   a.rate = args.it == 0 and linkRate or args.it
    log:info("Precision: %d [Mbit/s]", rateThreshold)
 
    while not finished do
@@ -159,7 +164,10 @@ function master(args)
                white(' [Mbit/s] for %ds', a.runtime))
       r = measure_with_rate(a)
       --validRun = (r.tx < r.rx + rateThreshold) and (r.tx >= a.rate*0.9)
-      validRun = (r.txMpps < r.rxMpps + lossTolerance) and (r.tx >= a.rate*0.9)
+      validRun = ((r.txTotal - r.rxTotal) / r.txTotal * 100 < lossTolerance)
+      if validRun then
+         lastValid = r
+      end
       log:info('  result: tx:%2.2f rx:%2.2f [Mpps]', r.txMpps, r.rxMpps)
       log:info('  result: tx:%5.0f rx:%5.0f [Mbit/s] %s', r.tx, r.rx, validRun)
       a.rate, finished = binSearch:next(a.rate, validRun, rateThreshold)
@@ -171,15 +179,17 @@ function master(args)
          a.rate = 0
          finished = true
       end
+
+      mg.sleepMillis(1000)
    end
    rate = binSearch.lowerLimit
    log:info('Result: %s%s', yellow(tostring(rate)), white(' [Mbit/s]'))
    if args.ofile then
       file = io.open(args.ofile, "w")
       file:write("limit,tx,rx,unit\n")
-      file:write(tostring(rate), ",",
-                tostring(tx), ",",
-                tostring(rx), ",Mbit/s\n")
+      file:write(tostring(lastValid.rxMpps), ",",
+                tostring(lastValid.txTotal), ",",
+                tostring(lastValid.rxTotal), ",Mpps\n")
       file:close()
    end
 end
@@ -206,7 +216,8 @@ function measure_with_rate(...)
    local rx_stats = rxCtr:getStats()
 
    return {tx=txCtr.wireMbit[1], rx=rxCtr.wireMbit[1],
-           txMpps=txCtr.mpps[1], rxMpps=rxCtr.mpps[1]}
+           txMpps=txCtr.mpps[1], rxMpps=rxCtr.mpps[1],
+           txTotal=txCtr.total[1], rxTotal=rxCtr.total[1]}
 end
 
 function replay_small_pcap(queue, bufs, n)

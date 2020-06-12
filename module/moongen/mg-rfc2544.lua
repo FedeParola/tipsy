@@ -220,7 +220,7 @@ function measure_with_rate(...)
    local rx_stats = rxCtr:getStats()
 
    return {txMpps=txCtr.mpps[1], rxMpps=rxCtr.mpps[1],
-           txPkts=txCtr.total[1], rxTotal=rxPkts.total[1]}
+           txPkts=txCtr.total, rxTotal=rxPkts.total}
 end
 
 function replay_small_pcap(queue, bufs, n)

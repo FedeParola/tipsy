@@ -31,7 +31,7 @@ class Tester(Base):
         precision = 50
         cmd = ['sudo', self.mg_cmd, self.script, self.txdev, self.rxdev, pcap,
                '-r', self.runtime, '-p', precision, '-o', ofile,
-               '--lossTolerance', self.loss_tolerance, '-t', seld.rate_limit]
+               '--lossTolerance', self.loss_tolerance, '-t', self.rate_limit]
         cmd = [ str(o) for o in cmd ]
         print(' '.join(cmd))
         subprocess.call(cmd)

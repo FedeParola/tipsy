@@ -184,7 +184,7 @@ function master(args)
 
       mg.sleepMillis(1000)
    end
-   log:info('Result: %.2f%s', yellow(string.format("%.2f", lastValid.rxMpps)),
+   log:info('Result: %s%s', yellow(string.format("%.2f", lastValid.rxMpps)),
             white(' [Mpps]'))
    if args.ofile then
       file = io.open(args.ofile, "w")

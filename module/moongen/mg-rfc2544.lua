@@ -173,7 +173,7 @@ function master(args)
          lastValid = r
       end
       log:info('  result: tx:%2.2f rx:%2.2f [Mpps]', r.txMpps, r.rxMpps)
-      log:info('  result: tx:%d rx:%d lost:%d (%.2%%) [packets] %s', r.txPkts,
+      log:info('  result: tx:%d rx:%d lost:%d (%.2f%%) [packets] %s', r.txPkts,
                r.rxPkts, lost, lossRate*100, validRun)
       a.rate, finished = binSearch:next(a.rate, validRun, rateThreshold)
       if r.rxMpps < 0.001 then
@@ -198,6 +198,9 @@ end
 
 function measure_with_rate(...)
    a = ...
+
+   local txPkts = a.txDev:getTxStats()
+   local rxPkts = a.rxDev:getRxStats()
    local rxCtr = stats:newDevRxCounter(a.rxDev, "nil")
    local txCtr = stats:newDevTxCounter(a.txDev, "nil")
    txCtr:update()
@@ -219,8 +222,11 @@ function measure_with_rate(...)
    local tx_stats = txCtr:getStats()
    local rx_stats = rxCtr:getStats()
 
+   txPkts = txCtr.total - txPkts
+   rxPkts = rxCtr.total - rxPkts
+
    return {txMpps=txCtr.mpps[1], rxMpps=rxCtr.mpps[1],
-           txPkts=txCtr.total, rxTotal=rxPkts.total}
+           txPkts=txPkts, rxPkts=rxPkts}
 end
 
 function replay_small_pcap(queue, bufs, n)

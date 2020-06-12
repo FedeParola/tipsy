@@ -28,7 +28,7 @@ class Tester(Base):
     def _run(self, out_dir):
         pcap = out_dir / 'traffic.pcap'
         ofile = out_dir / 'mg.rfc2544.csv'
-        precision = 50
+        precision = 25
         cmd = ['sudo', self.mg_cmd, self.script, self.txdev, self.rxdev, pcap,
                '-r', self.runtime, '-p', precision, '-o', ofile,
                '--lossTolerance', self.loss_tolerance, '-t', self.rate_limit]

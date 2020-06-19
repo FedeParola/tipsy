@@ -167,6 +167,14 @@ class PL_mgw(PL):
         # Set the number of cores
         if self.plconf.core > 0:
             try:
+                # Set the number of queues on NICs
+                subprocess.run(['sudo', 'ethtool', '-L',
+                                self.bmconf.sut.downlink_port, 'combined',
+                                self.plconf.core])
+                subprocess.run(['sudo', 'ethtool', '-L',
+                                self.bmconf.sut.downlink_port, 'combined',
+                                self.plconf.core])
+
                 subprocess.run(['sudo', 'killall', 'irqbalance'])
                 cores = '0-' + str(self.plconf.core - 1)
                 set_cores_cmd = [

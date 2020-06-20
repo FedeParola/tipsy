@@ -157,7 +157,8 @@ class GenPkt_mgw(GenPkt):
         p = (
             Ether(dst=gw.mac) /
             IP(src=server.ip, dst=user.ip) /
-            proto()
+            proto(sport=random.randint(1, 60000),
+                  dport=random.randint(1, 60000))
         )
         p = self.add_payload(p, self.args.pkt_size)
         return p
@@ -170,7 +171,7 @@ class GenPkt_mgw(GenPkt):
         p = (
             Ether(src=bst.mac, dst=gw.mac, type=0x0800) /
             IP(src=bst.ip, dst=gw.ip) /
-            UDP(sport=4789, dport=4789) /
+            UDP(sport=random.randint(1, 60000), dport=4789) /
             VXLAN(vni=user.teid, flags=0x08) /
             Ether(dst=gw.mac, type=0x0800) /
             IP(src=user.ip, dst=server.ip) /
@@ -183,7 +184,7 @@ class GenPkt_mgw(GenPkt):
         p = (
             Ether(src=bst.mac, dst=gw.mac, type=0x0800) /
             IP(src=bst.ip, dst=gw.ip) /
-            UDP(sport=2152, dport=2152) /
+            UDP(sport=random.randint(1, 60000), dport=2152) /
             GTPHeader(teid=user.teid, version=1) /
             IP(src=user.ip, dst=server.ip) /
             proto()

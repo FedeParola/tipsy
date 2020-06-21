@@ -65,7 +65,7 @@ class PL(object):
                     user = [u for u in self.plconf.users if u.teid == teid][0]
                     new_bst = self._calc_new_bst_id(user.tun_end, shift)
                     self.handover(user, new_bst)
-                    u.tun_end = new_bst
+                    user.tun_end = new_bst
                 elif task.action in table_actions:
                     self.mod_table(task.action, task.cmd,
                                    task.table, task.entry)

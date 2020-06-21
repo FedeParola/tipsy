@@ -189,9 +189,13 @@ class PL_mgw(PL):
                          ' '.join(set_cores_cmd))
 
         # Add static arp entry for default gw
-        call_cmd(['polycubectl', 'r1', 'arp-table', 'add',
-                  self.plconf.gw.default_gw.ip,
-                  'mac=' + self.plconf.gw.default_gw.mac, 'port=dport'])
+        arp_table = "["
+        arp_table += json.dumps({
+            'address': self.plconf.gw.default_gw.ip,
+            'mac': self.plconf.gw.default_gw.mac,
+            'interface': 'dport'
+        })
+
         
         # Next hops: add static arp entries with custom ip addrs in net 140.0.0.0/16
         # PROBLEM: can't set different smac for every next-hop

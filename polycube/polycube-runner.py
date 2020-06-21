@@ -122,7 +122,7 @@ class PL_mgw(PL):
                 'name': 'dport',
                 'peer': self.downlink_p,
                 'mac': self.plconf.gw.mac,
-                'ip': self.plconf.gw.ip + '/30'
+                'ip': self.plconf.gw.ip + '/24'
             },
             {
                 'name': 'uport',

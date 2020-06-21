@@ -62,10 +62,9 @@ class PL(object):
                 if task.action == 'handover':
                     teid = task.args.user_teid
                     shift = task.args.bst_shift
-                    user = [u for u in self.plconf.users if u.teid == teid][0]
+                    user = self.plconf.users[teid-1]
                     new_bst = self._calc_new_bst_id(user.tun_end, shift)
                     self.handover(user, new_bst)
-                    user.tun_end = new_bst
                 elif task.action in table_actions:
                     self.mod_table(task.action, task.cmd,
                                    task.table, task.entry)
@@ -123,10 +122,7 @@ class PL_mgw(PL):
                 'name': 'dport',
                 'peer': self.downlink_p,
                 'mac': self.plconf.gw.mac,
-                'ip': self.plconf.gw.ip + '/30',
-                'secondaryip': [
-                    {'ip': '1.1.255.254/16'}
-                ]
+                'ip': self.plconf.gw.ip + '/30'
             },
             {
                 'name': 'uport',
@@ -192,16 +188,10 @@ class PL_mgw(PL):
                 sys.exit('ERROR: setting cores count failed: %s' %
                          ' '.join(set_cores_cmd))
 
-        # Add static arp entries for base stations
-        arp_table = "["
-        for i, bst in enumerate(self.plconf.bsts):
-            if i > 0:
-                arp_table += ','
-            arp_table += json.dumps({
-                'address': bst.ip,
-                'mac': bst.mac,
-                'interface': 'dport'
-            })
+        # Add static arp entry for default gw
+        call_cmd(['polycubectl', 'r1', 'arp-table', 'add',
+                  self.plconf.gw.default_gw.ip,
+                  'mac=' + self.plconf.gw.default_gw.mac, 'port=dport'])
         
         # Next hops: add static arp entries with custom ip addrs in net 140.0.0.0/16
         # PROBLEM: can't set different smac for every next-hop
@@ -245,7 +235,7 @@ class PL_mgw(PL):
 
             routes += json.dumps({
                 'network': u.ip + '/32',
-                'nexthop': self.plconf.bsts[u.tun_end].ip
+                'nexthop': self.plconf.gw.default_gw.ip
             })
             classes += json.dumps({
                 'id': u.teid,
@@ -304,7 +294,7 @@ class PL_mgw(PL):
 
     def add_user(self, user):
         call_cmd(['polycubectl', 'r1', 'route', 'add', user.ip + '/32',
-                  self.plconf.bsts[user.tun_end].ip])
+                  self.plconf.gw.default_gw.ip])
         call_cmd(['polycubectl', 'c1', 'traffic-class', 'add', str(user.teid),
                   'priority=0', 'direction=egress', 'dstip=' + user.ip + '/32'])
         call_cmd(['polycubectl', 'p1', 'contract', 'add', str(user.teid),
@@ -312,8 +302,7 @@ class PL_mgw(PL):
                   'burst-limit=' + str(user.rate_limit)])
         call_cmd(['polycubectl', 'gh1', 'user-equipment', 'add',
                   user.ip,
-                  'tunnel-endpoint=' + self.plconf.bsts[user.tun_end].ip,
-                  'teid=' + str(user.teid)])
+                  'tunnel-endpoint=' + self.plconf.bsts[user.tun_end].ip])
 
     def del_user(self, user):
         call_cmd(['polycubectl', 'r1', 'route', 'del', user.ip + '/32',
@@ -333,12 +322,8 @@ class PL_mgw(PL):
                   fill_ip('140.0.%d.%d', server.nhop, 1)])
 
     def handover(self, user, new_bst):
-        call_cmd(['polycubectl', 'r1', 'route', 'del', user.ip + '/32',
-                  self.plconf.bsts[user.tun_end].ip])
         call_cmd(['polycubectl', 'gh1', 'user-equipment', user.ip, 'set',
                   'tunnel-endpoint=' + self.plconf.bsts[new_bst].ip])
-        call_cmd(['polycubectl', 'r1', 'route', 'add', user.ip + '/32', 
-                  self.plconf.bsts[new_bst].ip])
         
 
 class Polycube(object):

@@ -65,6 +65,7 @@ class PL(object):
                     user = [u for u in self.plconf.users if u.teid == teid][0]
                     new_bst = self._calc_new_bst_id(user.tun_end, shift)
                     self.handover(user, new_bst)
+                    u.tun_end = new_bst
                 elif task.action in table_actions:
                     self.mod_table(task.action, task.cmd,
                                    task.table, task.entry)
@@ -334,10 +335,11 @@ class PL_mgw(PL):
     def handover(self, user, new_bst):
         call_cmd(['polycubectl', 'r1', 'route', 'del', user.ip + '/32',
                   self.plconf.bsts[user.tun_end].ip])
-        call_cmd(['polycubectl', 'r1', 'route', 'add', user.ip, 'set',
-                  'tunnel-endpoint=' + self.plconf.bsts[new_bst].ip])
         call_cmd(['polycubectl', 'gh1', 'user-equipment', user.ip, 'set',
                   'tunnel-endpoint=' + self.plconf.bsts[new_bst].ip])
+        call_cmd(['polycubectl', 'r1', 'route', 'add', user.ip + '/32', 
+                  self.plconf.bsts[new_bst].ip])
+        
 
 class Polycube(object):
     def __init__(self, plconf, bmconf):

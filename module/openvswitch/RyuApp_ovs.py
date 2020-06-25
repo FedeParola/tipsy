@@ -88,27 +88,13 @@ class RyuApp(RyuAppOpenflow):
     sw_conf.set_fail_mode(br_name, 'secure')
     self.add_port(br_name, 'ul_port', self.ul_port_name, core=core)
 
-    br_name = 'br-phy'
-    sw_conf.del_bridge(br_name, can_fail=False)
-    sw_conf.add_bridge(br_name, hwaddr=self.pl_conf.gw.mac, dp_desc=br_name)
-    sw_conf.set_datapath_type(br_name, 'netdev')
-    self.add_port(br_name, 'dl_port', self.dl_port_name, core=core)
-    ip.set_up(br_name, self.pl_conf.gw.ip + '/24')
+    ip.set_mac(self.dl_port_name, self.pl_conf.gw.mac)
+    ip.set_up(self.dl_port_name, self.pl_conf.gw.ip + '/24')
 
     ip.add_veth('veth-phy', 'veth-main')
     ip.set_up('veth-main')
     ip.set_up('veth-phy')
     sw_conf.add_port('br-main', 'veth-main', type='system')
-    sw_conf.add_port('br-phy', 'veth-phy', type='system')
-    # Don't use a controller for the following static rules
-    cmd = 'sudo ovs-ofctl --protocol OpenFlow13 add-flow br-phy priority=1,'
-    in_out = [('veth-phy', 'dl_port'),
-              ('dl_port', 'br-phy'),
-              ('br-phy', 'dl_port')]
-    for in_port, out_port in in_out:
-      cmd_tail = 'in_port=%s,actions=output:%s' % (in_port, out_port)
-      if subprocess.call(cmd + cmd_tail, shell=True):
-        self.logger.error('cmd failed: %s' % cmd)
 
     nets = {}
     for host in self.pl.get_tunnel_endpoints():
@@ -139,9 +125,7 @@ class RyuApp(RyuAppOpenflow):
 
   def set_arp_table(self):
     def_gw = self.pl_conf.gw.default_gw
-    sw_conf.set_arp('br-phy', def_gw.ip, def_gw.mac)
-    self.logger.debug('br-phy: Update the ARP table')
-    hub.spawn_after(60 * 4, self.set_arp_table)
+    subprocess.call('sudo', 'arp', '-s', def_gw.ip, def_gw.mac)
 
   def get_tun_port(self, tun_end):
     "Get SUT port to tun_end"

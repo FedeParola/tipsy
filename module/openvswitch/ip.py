@@ -37,6 +37,9 @@ def add_veth(name1, name2):
 def del_veth(name1, _name2=None):
   call('link', 'del', 'dev', name1)
 
+def set_mac(iface, mac):
+  call('link', 'set', iface, 'address', mac)
+
 def set_up(iface, addr=None):
   call('link', 'set', 'dev', iface, 'up')
   if addr:

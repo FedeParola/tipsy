@@ -78,8 +78,6 @@ class RyuApp(RyuAppOpenflow):
     sw_conf.del_bridge('br-main')
 
   def initialize_dp_tunneled(self):
-    sw_conf.set_coremask(self.bm_conf.sut.coremask)
-    core = self.bm_conf.pipeline.core
     br_name = 'br-main'
     sw_conf.del_bridge(br_name, can_fail=False)
     sw_conf.add_bridge(br_name, dp_desc=br_name)
@@ -102,6 +100,33 @@ class RyuApp(RyuAppOpenflow):
     for net in nets.iterkeys():
       ip.add_route_gw(net, self.pl_conf.gw.default_gw.ip)
     self.set_arp_table()
+
+    # Set the number of cores
+    core_count = self.bm_conf.pipeline.core
+    if core_count > 0:
+      try:
+        # Set the number of queues on NICs
+        subprocess.run(['sudo', 'ethtool', '-L',
+                        self.bmconf.sut.downlink_port, 'combined',
+                        str(core_count)])
+        subprocess.run(['sudo', 'ethtool', '-L',
+                        self.bmconf.sut.uplink_port, 'combined',
+                        str(core_count)])
+
+        subprocess.run(['sudo', 'killall', 'irqbalance'])
+        cores = '0-' + str(cores - 1)
+        set_cores_cmd = [
+                'sudo',
+                self.bm_conf.sut.tipsy_dir +
+                '/polycube/set_irq_affinity.sh',
+                cores,
+                self.bmconf.sut.downlink_port,
+                self.bmconf.sut.uplink_port]
+        call_cmd(set_cores_cmd)
+      
+      except:
+        sys.exit('ERROR: setting cores count failed: %s' %
+                  ' '.join(set_cores_cmd))
 
   def stop_dp_tunneled(self):
     sw_conf.del_bridge('br-main')

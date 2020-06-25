@@ -83,7 +83,7 @@ class RyuApp(RyuAppOpenflow):
     sw_conf.add_bridge(br_name, dp_desc=br_name)
     sw_conf.set_controller(br_name, 'tcp:127.0.0.1')
     sw_conf.set_fail_mode(br_name, 'secure')
-    self.add_port(br_name, 'ul_port', self.ul_port_name, core=core)
+    self.add_port(br_name, 'ul_port', self.ul_port_name)
 
     ip.set_mac(self.dl_port_name, self.pl_conf.gw.mac)
     ip.set_up(self.dl_port_name, self.pl_conf.gw.ip + '/24')

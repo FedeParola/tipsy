@@ -110,7 +110,7 @@ class TipsyConfig(dict):
             confs = {}
             for segment in segments:
                 confs[segment] = scale(getattr(benchmark, segment))
-            confs = self._scale_outer(confs)
+            confs = scale(confs)
             for conf in confs:
                 validate.validate_data(conf, schema_name='benchmark')
                 self.configs.append(conf)
@@ -137,12 +137,13 @@ class TipsyConfig(dict):
     def _scale_joint(self, conf_dict):
         if type(conf_dict) not in [dict, TipsyConfig]:
             return conf_dict
-        min_len = min([len(v)
+        max_len = max([len(v)
                        for k, v in conf_dict.items() if type(v) == list]
                       or [1])
         ret_list = []
-        for i in range(min_len):
-            ret_list.append({k: v[i] if type(v) == list else v
+        for i in range(max_len):
+            ret_list.append({k: v[i if len(v) >= max_len else len(v)-1]
+                                   if type(v) == list else v
                              for k, v in conf_dict.items()})
         return ret_list
 

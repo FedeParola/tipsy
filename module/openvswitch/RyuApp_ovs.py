@@ -83,7 +83,6 @@ class RyuApp(RyuAppOpenflow):
     br_name = 'br-main'
     sw_conf.del_bridge(br_name, can_fail=False)
     sw_conf.add_bridge(br_name, dp_desc=br_name)
-    sw_conf.set_datapath_type(br_name, 'netdev')
     sw_conf.set_controller(br_name, 'tcp:127.0.0.1')
     sw_conf.set_fail_mode(br_name, 'secure')
     self.add_port(br_name, 'ul_port', self.ul_port_name, core=core)
@@ -106,7 +105,6 @@ class RyuApp(RyuAppOpenflow):
 
   def stop_dp_tunneled(self):
     sw_conf.del_bridge('br-main')
-    sw_conf.del_bridge('br-phy')
     ip.del_veth('veth-phy', 'veth-main')
 
   def initialize_datapath(self):
@@ -125,7 +123,7 @@ class RyuApp(RyuAppOpenflow):
 
   def set_arp_table(self):
     def_gw = self.pl_conf.gw.default_gw
-    subprocess.call('sudo', 'arp', '-s', def_gw.ip, def_gw.mac)
+    subprocess.call(['sudo', 'arp', '-s', def_gw.ip, def_gw.mac])
 
   def get_tun_port(self, tun_end):
     "Get SUT port to tun_end"

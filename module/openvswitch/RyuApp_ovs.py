@@ -106,23 +106,23 @@ class RyuApp(RyuAppOpenflow):
     if core_count > 0:
       try:
         # Set the number of queues on NICs
-        subprocess.run(['sudo', 'ethtool', '-L',
-                        self.bmconf.sut.downlink_port, 'combined',
-                        str(core_count)])
-        subprocess.run(['sudo', 'ethtool', '-L',
-                        self.bmconf.sut.uplink_port, 'combined',
-                        str(core_count)])
+        subprocess.call(['sudo', 'ethtool', '-L',
+                         self.bm_conf.sut.downlink_port, 'combined',
+                         str(core_count)])
+        subprocess.call(['sudo', 'ethtool', '-L',
+                         self.bm_conf.sut.uplink_port, 'combined',
+                         str(core_count)])
 
-        subprocess.run(['sudo', 'killall', 'irqbalance'])
-        cores = '0-' + str(cores - 1)
+        subprocess.call(['sudo', 'killall', 'irqbalance'])
+        cores = '0-' + str(core_count - 1)
         set_cores_cmd = [
                 'sudo',
                 self.bm_conf.sut.tipsy_dir +
                 '/polycube/set_irq_affinity.sh',
                 cores,
-                self.bmconf.sut.downlink_port,
-                self.bmconf.sut.uplink_port]
-        call_cmd(set_cores_cmd)
+                self.bm_conf.sut.downlink_port,
+                self.bm_conf.sut.uplink_port]
+        subprocess.call(set_cores_cmd)
       
       except:
         sys.exit('ERROR: setting cores count failed: %s' %

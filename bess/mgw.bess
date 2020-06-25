@@ -73,7 +73,7 @@ else:
                     num_out_q=bess_workers)
 
 
-buf2 = Bypass(name='chokepoint')
+buf2 = Queue(name='chokepoint')
 ul_ws = WorkerSplit(name='worker_split_ul')
 dl_ws = WorkerSplit(name='worker_split_dl')
 if conf.fakedrop:
